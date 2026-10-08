@@ -21,3 +21,5 @@ The pane opens on its own when the first subagent spawns. When the whole crew cl
 ```
 
 Restart the session afterwards.
+
+Third-party marketplaces don't auto-update by default. To get new versions, turn on auto-update under `/plugin` → Marketplaces, or run `/plugin marketplace update claude-mods`.
