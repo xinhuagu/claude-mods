@@ -1,6 +1,6 @@
 {
   "name": "agent-crew",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A live pane of your subagents as a little pixel crew: who is working, on what, and how far along",
   "author": { "name": "xinhuagu", "url": "https://github.com/xinhuagu" },
   "homepage": "https://github.com/xinhuagu/claude-mods",

@@ -10,6 +10,7 @@ A live pane of your subagents as a little pixel crew: who is working, on what, a
 - **Role and model**: `Explore` shows up as a scout, `Plan` as an architect, `general-purpose` as a builder, and so on, along with the model it runs on.
 - **What it's doing right now**, based on the last tool it called ("sniffing through files", "hammering code", "cranking the shell"…).
 - **Progress, steps, tokens and elapsed time** for each agent, plus a crew-wide summary at the top.
+- **Mail between agents.** When one agent messages another with SendMessage, a bracket in the sender's color runs down the lane on the left, from `╭─` at the sender to `╰▶` at the receiver, with a little ✉ riding it (`⌂` is the lead, your main conversation). The sender says `💬 → builder: "found 3 call sites"` and the receiver, with a `!` over its head, shows `📬 from mapper: "found 3 call sites"` in the same color. Each agent counts what it sent and got (`✉2↑3↓`). A message also wakes a teammate that went idle.
 
 The pane opens on its own when the first subagent spawns. When the whole crew clocks out you get a toast, and the pane closes 10 seconds later. Press `c` to clear finished agents, or run `/crew` to open the pane at any time.
 
