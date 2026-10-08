@@ -110,7 +110,7 @@ test('a letter flies between teammates, the sender talks and the receiver perks 
   expect(await ui.find({ text: /💌 1/ })).toBeDefined()
   await ui.unmount()
 
-  await clock.advance(3_100)
+  await clock.advance(2_100)
   const later = await $.ui.mount({ plugin: 'agent-crew', surface: 'terminal', component: 'Pane', requestId: 'agent-crew', props: PANE_PROPS })
   expect(await later.find({ text: /📬 from scout: "found 3 call sites in auth\/"/ })).toBeDefined()
   expect(await later.find({ text: /✉1↑0↓/ })).toBeDefined()
@@ -186,15 +186,15 @@ test('the lane draws a bracket from sender to receiver in the sender color', () 
   const row = (cells: { char: string }[]) => cells.map(c => c.char).join('')
 
   const landed = lane(list, [{ id: 1, from: 'c', to: 'a', sentAt: 0 }], 4_000)
-  expect(row(landed[3]!)).toBe('╭──▶')
-  expect(row(landed[13]!)).toBe('╰───')
-  expect(row(landed[8]!)).toBe('│   ')
-  expect(landed[8]![0]!.isFaded).toBe(true)
-  expect(landed[8]![0]!.color).toBe('#E07A9A')
+  expect(row(landed[2]!)).toBe('╭──▶')
+  expect(row(landed[10]!)).toBe('╰───')
+  expect(row(landed[6]!)).toBe('│   ')
+  expect(landed[6]![0]!.isFaded).toBe(true)
+  expect(landed[6]![0]!.color).toBe('#E07A9A')
 
-  const crossing = lane(list, [{ id: 1, from: 'a', to: 'c', sentAt: 0 }, { id: 2, from: 'lead', to: 'b', sentAt: 100 }], 1_500)
+  const crossing = lane(list, [{ id: 1, from: 'a', to: 'c', sentAt: 0 }, { id: 2, from: 'lead', to: 'b', sentAt: 100 }], 1_000)
   expect(row(crossing[0]!)).toBe('⌂─┐ ')
-  expect(row(crossing[8]!)).toBe('✉ ╰▶')
+  expect(row(crossing[6]!)).toBe('✉ ╰▶')
 })
 
 test('a new batch after the crew clocked out starts with a fresh crew', async ($, on) => {
@@ -288,27 +288,27 @@ test('every Clawd row fills the sprite column in every state and pose', () => {
 
 test('the first Clawd is Clawd orange and bareheaded, and failed Clawds go grey', () => {
   const first = sprite(member({ look: 0 }), 0, 0)
-  expect(first[1]![0]![1]).toBe('#D77757')
+  expect(first).toHaveLength(2)
+  expect(first[1]![1]).toEqual(['▀▜▀▛', '#D77757'])
   expect(first[0]!.some(([, , bg]) => bg !== undefined)).toBe(false)
+  expect(first[0]![2]).toEqual(['▛', '#D77757'])
   const capped = sprite(member({ look: 7 }), 0, 0)
-  expect(capped[0]![3]).toEqual(['▀▀▀', '#F5F0E6', '#E5B35C'])
+  expect(capped[0]![3]).toEqual(['▀', '#F5F0E6', '#E5B35C'])
   expect(grey('#D77757')).toBe('#937166')
   const done = sprite(member({ status: 'done' }), 0, 0)
   expect(done[0]![0]).toEqual(['✓', '#5FB86A'])
   expect(done[0]![2]).toEqual(['^', '#1E1A22', '#D77757'])
-  expect(done[1]![1]).toEqual(['▘', '#FF8FAB', '#D77757'])
   const failed = sprite(member({ status: 'failed' }), 0, 0)
-  expect(failed[1]![0]![1]).toBe('#937166')
-  expect(failed[1]![1]).toEqual(['▘', grey('#FF8FAB'), '#937166'])
-  expect(first[0]![2]).toEqual(['▛', '#D77757'])
-  expect(first[1]![1]).toEqual(['▘', '#FF8FAB', '#D77757'])
+  expect(failed[1]![1]).toEqual(['▀▜▀▛', '#937166'])
+  expect(failed[0]![2]).toEqual(['×', '#1E1A22', '#937166'])
 })
 
-test('a done Clawd plants a still grey flag on its shoulder', () => {
+test('a done Clawd raises its arm and holds up a still grey flag', () => {
   const at = (tick: number) => {
-    const [top, middle] = sprite(member({ status: 'done' }), tick, 0)
-    return { flag: top!.at(-2), shoulder: middle!.at(-2) }
+    const [head, arms] = sprite(member({ status: 'done' }), tick, 0)
+    return { hand: head![5], flag: head![6], shoulder: arms![2] }
   }
   for (const tick of [0, 1, 2, 3]) expect(at(tick).flag).toEqual(['▛', '#B5B5B5'])
-  expect(at(0).shoulder).toEqual(['▛▘', '#D77757'])
+  expect(at(0).hand).toEqual(['▙', '#D77757'])
+  expect(at(0).shoulder).toEqual(['▘', '#D77757'])
 })

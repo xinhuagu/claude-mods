@@ -6,7 +6,7 @@ A live pane of your subagents as a little pixel crew: who is working, on what, a
 
 ## What you see
 
-- **One Clawd per subagent**, each in its own body color and cap (the first goes bareheaded in Clawd orange). It blinks and waves while working, plants a flag with happy `^ ^` eyes when done, goes grey with `× ×` eyes on failure, and dozes if stopped.
+- **One mini Clawd per subagent**, two rows tall, each in its own body color and cap (the first goes bareheaded in Clawd orange). It blinks and waves while working, holds up a flag with happy `^ ^` eyes when done, goes grey with `× ×` eyes on failure, and dozes if stopped.
 - **Role and model**: `Explore` shows up as a scout, `Plan` as an architect, `general-purpose` as a builder, and so on, along with the model it runs on.
 - **What it's doing right now**, based on the last tool it called ("sniffing through files", "hammering code", "cranking the shell"…).
 - **Progress, steps, tokens and elapsed time** for each agent, plus a crew-wide summary at the top.

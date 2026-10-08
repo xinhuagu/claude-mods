@@ -9,9 +9,9 @@ const MAX_CREW = 12
 /** How long the pane lingers after the last agent clocks out, so the finish can be seen. */
 const CLOSE_DELAY_MS = 10_000
 /** How long a letter takes to fly from sender to receiver: slow enough to follow it down the lane. */
-const FLIGHT_MS = 3_000
+const FLIGHT_MS = 2_000
 /** How long a sender keeps talking, and a receiver keeps its ears up after the letter lands. */
-const MOOD_MS = 5_000
+const MOOD_MS = 4_000
 /** The main conversation, as the mail lane knows it. */
 const LEAD = 'lead'
 
@@ -33,10 +33,10 @@ let letterId = 0
 
 /** Each crew member is a Clawd: body colour from look % 6, cap colour from look / 6. */
 const BODY_COLORS = ['#D77757', '#E5B35C', '#E07A9A', '#8DBF6A', '#6FA8DC', '#A98ADB']
-/** The cap tints the top half of the head; the first Clawd goes bareheaded. */
+/** The cap tints the top of the head; the first Clawd goes bareheaded. */
 const CAP_COLORS = [null, '#F5F0E6', '#D2453A', '#2BA89A', '#34508F', '#5A4636']
-/** Every sprite row is this many cells: a status mark, Clawd, and a gap before the text. */
-export const SPRITE_WIDTH = 10
+/** Every sprite row is this many cells: a status mark, a mini Clawd with room to raise an arm, and a gap. */
+export const SPRITE_WIDTH = 8
 
 /** Clawd's own eyes are notches cut in the head; every other look is a glyph drawn on it. */
 const EYES_OPEN = ['▛', '▜'] as const
@@ -45,12 +45,8 @@ const EYES_ALERT = ['●', '●'] as const
 const EYES_HAPPY = ['^', '^'] as const
 const EYES_DAZED = ['×', '×'] as const
 const EYE_COLOR = '#1E1A22'
-const CHEEKS = ['▘', '▝'] as const
-const CHEEK_COLOR = '#FF8FAB'
-/** Left arm, right arm, and the raised right arm beside the head, joined at the shoulder. */
-const ARMS_DOWN = ['▝', '▘', ' '] as const
-const ARMS_WAVE = ['▝', '▘', '▖'] as const
-const FEET = '  ▘▘ ▝▝   '
+/** Arms out at the shoulders over two little legs. */
+const BODY = '▀▜▀▛'
 
 const MARK_WORK = '*'
 const MARK_BLINK = '·'
@@ -62,7 +58,7 @@ const MARK_STOPPED = 'z'
 const TALK_COLOR = '#7FB8E6'
 const LISTEN_COLOR = '#E8C46B'
 const DONE_COLOR = '#5FB86A'
-/** A done Clawd plants a little grey flag on its shoulder: the pole is the cell's left half, the banner stays put. */
+/** A done Clawd holds up a little grey flag: the pole is the cell's left half, the banner stays put. */
 const FLAG = '▛'
 const FLAG_COLOR = '#B5B5B5'
 const FAILED_COLOR = '#E05A4F'
@@ -79,41 +75,34 @@ export function grey(hex: string): string {
   return `#${[1, 3, 5].map(at => mix(at).toString(16).padStart(2, '0')).join('').toUpperCase()}`
 }
 
+/** The right arm: down at the side, raised beside the head, or raised holding the done flag. */
+type Arm = 'down' | 'up' | 'flag'
+
 type Pose = {
   body: string
   cap: string | null
-  cheek: string
   eyes: readonly [string, string]
-  arms: readonly [string, string, string]
+  arm: Arm
   mark: string
   markColor?: string
-  /** The raised arm's colour, when it holds something other than itself. */
-  raisedColor?: string
 }
 
-function clawd({ body, cap, cheek, eyes, arms, mark, markColor, raisedColor = body }: Pose): Span[][] {
-  const [left, right, raised] = arms
+/** A mini Clawd, two rows tall: the head with its eyes, then arms and legs. */
+function clawd({ body, cap, eyes, arm, mark, markColor }: Pose): Span[][] {
   const eye = (glyph: string): Span => (eyes === EYES_OPEN ? [glyph, body] : [glyph, EYE_COLOR, body])
+  const isUp = arm !== 'down'
   return [
     [
       markColor === undefined ? [mark] : [mark, markColor],
       ['▐', body],
       eye(eyes[0]),
-      cap === null ? ['███', body] : ['▀▀▀', cap, body],
+      cap === null ? ['█', body] : ['▀', cap, body],
       eye(eyes[1]),
-      ['▌', body],
-      [raised, raisedColor],
+      [isUp ? '▙' : '▌', body],
+      arm === 'flag' ? [FLAG, FLAG_COLOR] : [' '],
       [' '],
     ],
-    [
-      [`${left}▜`, body],
-      [CHEEKS[0], cheek, body],
-      ['███', body],
-      [CHEEKS[1], cheek, body],
-      [`▛${right}`, body],
-      [' '],
-    ],
-    [[FEET, body]],
+    [[' '], [BODY, body], [isUp ? '▘' : '▀', body], ['  ']],
   ]
 }
 
@@ -126,31 +115,28 @@ function moodAt(member: CrewMember, now: number): CrewMood | undefined {
 export function sprite(member: CrewMember, tick: number, now: number): Span[][] {
   const body = BODY_COLORS[member.look % BODY_COLORS.length]!
   const cap = CAP_COLORS[Math.floor(member.look / BODY_COLORS.length) % CAP_COLORS.length]!
-  const off = { body: grey(body), cap: cap === null ? null : grey(cap), cheek: grey(CHEEK_COLOR), arms: ARMS_DOWN }
-  if (member.status === 'done') {
-    return clawd({ body, cap, cheek: CHEEK_COLOR, eyes: EYES_HAPPY, arms: [ARMS_DOWN[0], ARMS_DOWN[1], FLAG], mark: MARK_DONE, markColor: DONE_COLOR, raisedColor: FLAG_COLOR })
-  }
+  const off = { body: grey(body), cap: cap === null ? null : grey(cap), arm: 'down' as const }
+  if (member.status === 'done') return clawd({ body, cap, eyes: EYES_HAPPY, arm: 'flag', mark: MARK_DONE, markColor: DONE_COLOR })
   if (member.status === 'failed') return clawd({ ...off, eyes: EYES_DAZED, mark: MARK_FAILED, markColor: FAILED_COLOR })
   if (member.status === 'stopped') return clawd({ ...off, eyes: EYES_SHUT, mark: MARK_STOPPED, markColor: STOPPED_COLOR })
   const mood = moodAt(member, now)
   if (mood?.kind === 'talk') {
-    return clawd({ body, cap, cheek: CHEEK_COLOR, eyes: EYES_OPEN, arms: tick % 2 === 0 ? ARMS_WAVE : ARMS_DOWN, mark: MARK_TALK, markColor: TALK_COLOR })
+    return clawd({ body, cap, eyes: EYES_OPEN, arm: tick % 2 === 0 ? 'up' : 'down', mark: MARK_TALK, markColor: TALK_COLOR })
   }
-  if (mood?.kind === 'listen') return clawd({ body, cap, cheek: CHEEK_COLOR, eyes: EYES_ALERT, arms: ARMS_DOWN, mark: MARK_LISTEN, markColor: LISTEN_COLOR })
+  if (mood?.kind === 'listen') return clawd({ body, cap, eyes: EYES_ALERT, arm: 'down', mark: MARK_LISTEN, markColor: LISTEN_COLOR })
   const phase = (tick + member.look) % 4
   return clawd({
     body,
     cap,
-    cheek: CHEEK_COLOR,
     eyes: phase === 1 ? EYES_SHUT : EYES_OPEN,
-    arms: phase === 3 ? ARMS_WAVE : ARMS_DOWN,
+    arm: phase === 3 ? 'up' : 'down',
     mark: phase % 2 === 0 ? MARK_WORK : MARK_BLINK,
     markColor: body,
   })
 }
 
 /** The Clawd on the empty pane, asleep. */
-const NAPPING = clawd({ body: BODY_COLORS[0]!, cap: null, cheek: CHEEK_COLOR, eyes: EYES_SHUT, arms: ARMS_DOWN, mark: MARK_STOPPED, markColor: STOPPED_COLOR })
+const NAPPING = clawd({ body: BODY_COLORS[0]!, cap: null, eyes: EYES_SHUT, arm: 'down', mark: MARK_STOPPED, markColor: STOPPED_COLOR })
 
 // ── words ────────────────────────────────────────────────────────────
 
@@ -267,6 +253,8 @@ export type LaneCell = { char: string; color?: string; isFaded?: boolean }
 /** Side-by-side tracks in the lane, so letters crossing the same stretch don't hide each other. */
 const TRACKS = 2
 export const LANE_WIDTH = TRACKS * 2
+/** Pane lines per crew member: a blank line, the head line with the task, the arms line, and the bar. */
+const CARD_ROWS = 4
 
 /**
  * The mail lane, LANE_WIDTH cells per pane line: the header line is the lead's
@@ -276,13 +264,13 @@ export const LANE_WIDTH = TRACKS * 2
  * receiver reads. Letters whose stretches overlap take separate tracks.
  */
 export function lane(list: readonly CrewMember[], letters: readonly Letter[], now: number): LaneCell[][] {
-  const rows = 1 + list.length * 5
+  const rows = 1 + list.length * CARD_ROWS
   const grid: LaneCell[][] = Array.from({ length: rows }, () => Array.from({ length: LANE_WIDTH }, () => ({ char: ' ' })))
   grid[0]![0] = { char: '⌂', color: '#E8E8E8' }
   const anchor = (id: string): number | undefined => {
     if (id === LEAD) return 0
     const i = list.findIndex(m => m.id === id)
-    return i < 0 ? undefined : 1 + i * 5 + 2
+    return i < 0 ? undefined : 1 + i * CARD_ROWS + 1
   }
   const taken: [number, number][][] = Array.from({ length: TRACKS }, () => [])
   for (const letter of [...letters].sort((x, y) => x.sentAt - y.sentAt)) {
@@ -567,20 +555,19 @@ export const register: Register = on => {
                 : isLive
                   ? `${SPINNER[(tick + m.look) % SPINNER.length]} ${activity(m.lastTool)}…`
                   : quip(m)
-          const top = 1 + i * 5
+          const top = 1 + i * CARD_ROWS
 
           return (
             <Box key={m.id} flexDirection="row">
-              {hasMail && <Box flexDirection="column">{[0, 1, 2, 3, 4].map(k => gutter(top + k))}</Box>}
+              {hasMail && <Box flexDirection="column">{Array.from({ length: CARD_ROWS }, (_, k) => gutter(top + k))}</Box>}
               <Box flexDirection="row" marginTop={1} flexGrow={1}>
                 {drawn(sprite(m, tick, now), m.id)}
                 <Box flexDirection="column" flexGrow={1}>
-                  <Text bold dimColor={!isLive} wrap="truncate-end">
-                    {m.task}
-                  </Text>
                   <Text wrap="truncate-end">
+                    <Text bold dimColor={!isLive}>{m.task}</Text>
+                    <Text>{'  '}</Text>
                     <Text color={ROLE_COLORS[r]!}>{r}</Text>
-                    <Text dimColor> {m.name !== undefined ? `${m.name} · ` : ''}{m.type} · {shortModel(m.model)}</Text>
+                    <Text dimColor> {m.name !== undefined ? `${m.name} · ` : ''}{shortModel(m.model)}</Text>
                   </Text>
                   <Text wrap="truncate-end" color={mood?.ink} dimColor={!isLive && mood === undefined}>
                     {doing}
