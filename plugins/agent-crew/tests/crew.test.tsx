@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { lane } from '../hooks/register'
+import { addressee, bar, lane, progress } from '../hooks/register'
+import type { CrewMember } from '../types'
 
 const PANE_PROPS = { title: 'Agent Crew', isFocused: false, bodyColumns: 70, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 40 }, view: {} }
 
@@ -173,4 +174,34 @@ test('a new batch after the crew clocked out starts with a fresh crew', async ($
   expect(await ui.find({ text: /New batch/ })).toBeDefined()
   expect(await ui.find({ text: /Old job one/ })).toBeUndefined()
   expect(await ui.find({ text: /Joins while one still works/ })).toBeUndefined()
+})
+
+const member = (over: Partial<CrewMember>): CrewMember => ({
+  id: 'agent-1', task: 'task', type: 'general-purpose', model: 'claude-opus-5-5', startedAt: 0,
+  steps: 0, tokens: 0, status: 'working', look: 0, sent: 0, received: 0, ...over,
+})
+
+test('mail finds its addressee by id, name, name@team, or the lead', () => {
+  const list = [member({ id: 'a1', name: 'mapper' }), member({ id: 'a2' })]
+  expect(addressee(list, 'a1')).toBe('a1')
+  expect(addressee(list, 'a2')).toBe('a2')
+  expect(addressee(list, 'mapper')).toBe('a1')
+  expect(addressee(list, 'mapper@crew')).toBe('a1')
+  expect(addressee(list, 'team-lead')).toBe('lead')
+  expect(addressee(list, 'lead@crew')).toBe('lead')
+  expect(addressee(list, 'stranger')).toBeUndefined()
+})
+
+test('progress creeps toward 95% while working and fills once finished', () => {
+  expect(progress(member({ steps: 0 }))).toBe(0)
+  expect(progress(member({ steps: 6 }))).toBe(0.5)
+  expect(progress(member({ steps: 10_000 }))).toBe(0.95)
+  for (const status of ['done', 'failed', 'stopped'] as const) expect(progress(member({ status }))).toBe(1)
+})
+
+test('the bar always fills its width', () => {
+  expect(bar(0.5, 10)).toEqual({ filled: '█████', empty: '░░░░░' })
+  expect(bar(0, 4)).toEqual({ filled: '', empty: '░░░░' })
+  expect(bar(1, 4)).toEqual({ filled: '████', empty: '' })
+  expect(bar(0.5, 0)).toEqual({ filled: '█', empty: '' })
 })

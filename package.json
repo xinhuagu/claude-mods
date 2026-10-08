@@ -1,0 +1,15 @@
+{
+  "name": "claude-mods",
+  "private": true,
+  "description": "Mods for Claude Code",
+  "license": "MIT",
+  "scripts": {
+    "test": "claude plugin test plugins/agent-crew",
+    "validate": "claude plugin validate plugins/agent-crew",
+    "typecheck": "tsc -p plugins/agent-crew --noEmit",
+    "check": "npm run validate && npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

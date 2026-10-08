@@ -19,6 +19,15 @@ In Claude Code:
 
 Restart the session afterwards.
 
+## Development
+
+```
+npm install
+npm run check   # validate + typecheck + test
+```
+
+`npm test` runs the plugin's `tests/*.test.tsx` with `claude plugin test`. `npm run typecheck` needs the types Claude Code writes into `plugins/agent-crew/.claude-plugin/types/` once it has loaded the plugin (for example with `claude --plugin-dir plugins/agent-crew`).
+
 ## License
 
 MIT
