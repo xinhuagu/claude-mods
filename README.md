@@ -1,4 +1,4 @@
-# claude-mods
+# oh-my-claude-mods
 
 Mods for [Claude Code](https://claude.com/claude-code). Each one is a standalone plugin under `plugins/`.
 
@@ -13,8 +13,8 @@ Mods for [Claude Code](https://claude.com/claude-code). Each one is a standalone
 In Claude Code:
 
 ```
-/plugin marketplace add xinhuagu/claude-mods
-/plugin install agent-crew@claude-mods
+/plugin marketplace add xinhuagu/oh-my-claude-mods
+/plugin install agent-crew@oh-my-claude-mods
 ```
 
 Restart the session afterwards.

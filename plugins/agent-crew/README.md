@@ -17,10 +17,10 @@ The pane opens on its own when the first subagent spawns. When the whole crew cl
 ## Install
 
 ```
-/plugin marketplace add xinhuagu/claude-mods
-/plugin install agent-crew@claude-mods
+/plugin marketplace add xinhuagu/oh-my-claude-mods
+/plugin install agent-crew@oh-my-claude-mods
 ```
 
 Restart the session afterwards.
 
-Third-party marketplaces don't auto-update by default. To get new versions, turn on auto-update under `/plugin` → Marketplaces, or run `/plugin marketplace update claude-mods`.
+Third-party marketplaces don't auto-update by default. To get new versions, turn on auto-update under `/plugin` → Marketplaces, or run `/plugin marketplace update oh-my-claude-mods`.
