@@ -16,3 +16,7 @@ In Claude Code:
 ```
 
 Restart the session afterwards.
+
+## License
+
+MIT
