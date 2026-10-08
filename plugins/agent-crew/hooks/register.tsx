@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { Register } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
 
 import type { CrewMember, CrewMood, CrewStatus, Letter } from '../types'
 
@@ -31,12 +31,91 @@ let letterId = 0
 
 // ── the little critters ──────────────────────────────────────────────
 
-const BODY_COLORS = ['#E8826B', '#6BB8E8', '#E8C46B', '#8FD16B', '#C38BE8', '#E86BA8']
-const HATS = [' ▄███▄ ', ' ▄▀▀▀▄ ', '  ▄█▄  ', '▄▄███▄ ', ' ▗███▖ ', ' ▄▓▓▓▄ ']
-const HAT_COLORS = ['#2FAE7A', '#E8E8E8', '#3D6FD6', '#D9A72B', '#B33A3A', '#7A7A7A']
-const EYES = ['◕ ◕', '◕ ◕', '◔ ◔', '◕ ◕', '◑ ◑', '◕ ◕', '- -', '◕ ◕']
-const LEGS = ['  ┘ └  ', '  └ ┘  ']
+/** Each crew member is a Clawd: body colour from look % 6, cap colour from look / 6. */
+const BODY_COLORS = ['#D77757', '#E5B35C', '#E07A9A', '#8DBF6A', '#6FA8DC', '#A98ADB']
+/** The cap tints the top half of the head; the first Clawd goes bareheaded. */
+const CAP_COLORS = [null, '#F5F0E6', '#D2453A', '#2BA89A', '#34508F', '#5A4636']
+/** Every sprite row is this many cells: a status mark, Clawd, and a gap before the text. */
+export const SPRITE_WIDTH = 10
+
+/** Clawd's own eyes are notches cut in the head; every other look is a glyph drawn on it. */
+const EYES_OPEN = ['▛', '▜'] as const
+const EYES_SHUT = ['─', '─'] as const
+const EYES_ALERT = ['●', '●'] as const
+const EYES_HAPPY = ['^', '^'] as const
+const EYES_DAZED = ['×', '×'] as const
+const EYE_COLOR = '#1E1A22'
+const CHEEKS = ['▘', '▝'] as const
+const CHEEK_COLOR = '#FF8FAB'
+/** Left arm, right arm, and the raised right arm beside the head, joined at the shoulder. */
+const ARMS_DOWN = ['▝', '▘', ' '] as const
+const ARMS_WAVE = ['▝', '▘', '▖'] as const
+const FEET = '  ▘▘ ▝▝   '
+
+const MARK_WORK = '*'
+const MARK_BLINK = '·'
+const MARK_TALK = '~'
+const MARK_LISTEN = '!'
+const MARK_DONE = '✓'
+const MARK_FAILED = '×'
+const MARK_STOPPED = 'z'
+const TALK_COLOR = '#7FB8E6'
+const LISTEN_COLOR = '#E8C46B'
+const DONE_COLOR = '#5FB86A'
+/** A done Clawd plants a little grey flag on its shoulder: the pole is the cell's left half, the banner stays put. */
+const FLAG = '▛'
+const FLAG_COLOR = '#B5B5B5'
+const FAILED_COLOR = '#E05A4F'
+const STOPPED_COLOR = '#8A8A8A'
+
 const SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+
+/** A run of cells in one foreground and optional background colour. */
+export type Span = [text: string, fg?: string, bg?: string]
+
+/** Washes a colour most of the way to grey, for crew members who failed or were sent home. */
+export function grey(hex: string): string {
+  const mix = (at: number) => Math.round(0.35 * parseInt(hex.slice(at, at + 2), 16) + 0.65 * 110)
+  return `#${[1, 3, 5].map(at => mix(at).toString(16).padStart(2, '0')).join('').toUpperCase()}`
+}
+
+type Pose = {
+  body: string
+  cap: string | null
+  cheek: string
+  eyes: readonly [string, string]
+  arms: readonly [string, string, string]
+  mark: string
+  markColor?: string
+  /** The raised arm's colour, when it holds something other than itself. */
+  raisedColor?: string
+}
+
+function clawd({ body, cap, cheek, eyes, arms, mark, markColor, raisedColor = body }: Pose): Span[][] {
+  const [left, right, raised] = arms
+  const eye = (glyph: string): Span => (eyes === EYES_OPEN ? [glyph, body] : [glyph, EYE_COLOR, body])
+  return [
+    [
+      markColor === undefined ? [mark] : [mark, markColor],
+      ['▐', body],
+      eye(eyes[0]),
+      cap === null ? ['███', body] : ['▀▀▀', cap, body],
+      eye(eyes[1]),
+      ['▌', body],
+      [raised, raisedColor],
+      [' '],
+    ],
+    [
+      [`${left}▜`, body],
+      [CHEEKS[0], cheek, body],
+      ['███', body],
+      [CHEEKS[1], cheek, body],
+      [`▛${right}`, body],
+      [' '],
+    ],
+    [[FEET, body]],
+  ]
+}
 
 /** The mood showing right now: a listener's starts only once the letter lands. */
 function moodAt(member: CrewMember, now: number): CrewMood | undefined {
@@ -44,18 +123,34 @@ function moodAt(member: CrewMember, now: number): CrewMood | undefined {
   return mood !== undefined && now >= mood.since && now < mood.until ? mood : undefined
 }
 
-function sprite(member: CrewMember, tick: number, now: number): { hat: string; face: string; legs: string } {
-  const hat = HATS[member.look % HATS.length] ?? HATS[0]!
-  if (member.status === 'done') return { hat, face: ' ▐^ ^▌⚑', legs: LEGS[0]! }
-  if (member.status === 'failed') return { hat, face: ' ▐x x▌ ', legs: '  ┴ ┴  ' }
-  if (member.status === 'stopped') return { hat, face: ' ▐- -▌z', legs: '  ┴ ┴  ' }
+export function sprite(member: CrewMember, tick: number, now: number): Span[][] {
+  const body = BODY_COLORS[member.look % BODY_COLORS.length]!
+  const cap = CAP_COLORS[Math.floor(member.look / BODY_COLORS.length) % CAP_COLORS.length]!
+  const off = { body: grey(body), cap: cap === null ? null : grey(cap), cheek: grey(CHEEK_COLOR), arms: ARMS_DOWN }
+  if (member.status === 'done') {
+    return clawd({ body, cap, cheek: CHEEK_COLOR, eyes: EYES_HAPPY, arms: [ARMS_DOWN[0], ARMS_DOWN[1], FLAG], mark: MARK_DONE, markColor: DONE_COLOR, raisedColor: FLAG_COLOR })
+  }
+  if (member.status === 'failed') return clawd({ ...off, eyes: EYES_DAZED, mark: MARK_FAILED, markColor: FAILED_COLOR })
+  if (member.status === 'stopped') return clawd({ ...off, eyes: EYES_SHUT, mark: MARK_STOPPED, markColor: STOPPED_COLOR })
   const mood = moodAt(member, now)
-  if (mood?.kind === 'talk') return { hat, face: ` ▐◕${tick % 2 ? 'o' : '-'}◕▌`, legs: LEGS[tick % 2]! }
-  if (mood?.kind === 'listen') return { hat: `${hat.slice(0, 6)}!`, face: ' ▐◉ ◉▌ ', legs: LEGS[0]! }
-  const eyes = EYES[(tick + member.look) % EYES.length]!
-  const spark = tick % 4 < 2 ? '✦' : '·'
-  return { hat, face: ` ▐${eyes}▌${spark}`, legs: LEGS[tick % 2]! }
+  if (mood?.kind === 'talk') {
+    return clawd({ body, cap, cheek: CHEEK_COLOR, eyes: EYES_OPEN, arms: tick % 2 === 0 ? ARMS_WAVE : ARMS_DOWN, mark: MARK_TALK, markColor: TALK_COLOR })
+  }
+  if (mood?.kind === 'listen') return clawd({ body, cap, cheek: CHEEK_COLOR, eyes: EYES_ALERT, arms: ARMS_DOWN, mark: MARK_LISTEN, markColor: LISTEN_COLOR })
+  const phase = (tick + member.look) % 4
+  return clawd({
+    body,
+    cap,
+    cheek: CHEEK_COLOR,
+    eyes: phase === 1 ? EYES_SHUT : EYES_OPEN,
+    arms: phase === 3 ? ARMS_WAVE : ARMS_DOWN,
+    mark: phase % 2 === 0 ? MARK_WORK : MARK_BLINK,
+    markColor: body,
+  })
 }
+
+/** The Clawd on the empty pane, asleep. */
+const NAPPING = clawd({ body: BODY_COLORS[0]!, cap: null, cheek: CHEEK_COLOR, eyes: EYES_SHUT, arms: ARMS_DOWN, mark: MARK_STOPPED, markColor: STOPPED_COLOR })
 
 // ── words ────────────────────────────────────────────────────────────
 
@@ -140,10 +235,13 @@ function statusOf(reason: string): CrewStatus {
 
 // ── mail ─────────────────────────────────────────────────────────────
 
+/** What a SendMessage `to` may call the main conversation: teammates say `team-lead`, background subagents `main`. */
+const LEAD_ALIASES = new Set(['team-lead', 'main', LEAD])
+
 /** The crew member (or the lead) a SendMessage `to` names: a name, an agent id, or `name@team`. */
 export function addressee(list: readonly CrewMember[], to: string): string | undefined {
   const bare = to.split('@')[0]!
-  if (bare === 'team-lead' || bare === LEAD) return LEAD
+  if (LEAD_ALIASES.has(bare)) return LEAD
   return list.find(m => m.id === to || m.name === to || m.name === bare)?.id
 }
 
@@ -225,6 +323,27 @@ export function lane(list: readonly CrewMember[], letters: readonly Letter[], no
   return grid
 }
 
+/** Sends a letter down the lane: the sender talks, the receiver perks up once it lands. */
+async function post($: EngineInterface, from: string, to: string, body: string): Promise<void> {
+  const now = await $.clock.now()
+  const text = snippet(body)
+  await update($, crew, all =>
+    all.map(m => {
+      if (m.id === from) {
+        return { ...m, sent: m.sent + 1, mood: { kind: 'talk' as const, peer: nameOf(all, to), ink: inkOf(all, from), text, since: now, until: now + MOOD_MS } }
+      }
+      if (m.id !== to) return m
+      const mood: CrewMood = { kind: 'listen', peer: nameOf(all, from), ink: inkOf(all, from), text, since: now + FLIGHT_MS, until: now + FLIGHT_MS + MOOD_MS }
+      // A message wakes a teammate that went idle, or a subagent it resumes.
+      const awake = m.status === 'working' ? {} : { status: 'working' as const, endedAt: undefined }
+      return { ...m, ...awake, received: m.received + 1, mood }
+    }),
+  )
+  await update($, mail, all => [...all, { id: ++letterId, from, to, sentAt: now }])
+  await update($, posted, n => n + 1)
+  if (to !== LEAD) cancelClose()
+}
+
 // ── hooks ────────────────────────────────────────────────────────────
 
 export const register: Register = on => {
@@ -276,14 +395,16 @@ export const register: Register = on => {
       received: 0,
     }
     cancelClose()
-    // A new batch after the last one all clocked out starts a fresh crew.
-    const isFresh = (await read($, crew)).every(m => m.status !== 'working')
-    if (isFresh) await update($, mail, () => [])
+    // A new batch after the last one all clocked out starts a fresh crew. Decided inside
+    // the update, so agents spawned in parallel see each other instead of each starting over.
+    let isFresh = false
     await update($, crew, list => {
+      isFresh = list.every(m => m.status !== 'working')
       const kept = isFresh ? [] : list
       const look = kept.length === 0 ? 0 : (kept[kept.length - 1]!.look + 1) % 60
       return [...kept, { ...member, look }].slice(-MAX_CREW)
     })
+    if (isFresh) await update($, mail, () => [])
     void $.ui.open({ id: PANE, title: TITLE })
 
     return started
@@ -298,23 +419,7 @@ export const register: Register = on => {
     const to = addressee(list, e.to)
     if (from === undefined || to === undefined || from === to) return result
 
-    const now = await $.clock.now()
-    const text = snippet(e.text)
-    await update($, crew, all =>
-      all.map(m => {
-        if (m.id === from) {
-          return { ...m, sent: m.sent + 1, mood: { kind: 'talk' as const, peer: nameOf(all, to), ink: inkOf(all, from), text, since: now, until: now + MOOD_MS } }
-        }
-        if (m.id !== to) return m
-        const mood: CrewMood = { kind: 'listen', peer: nameOf(all, from), ink: inkOf(all, from), text, since: now + FLIGHT_MS, until: now + FLIGHT_MS + MOOD_MS }
-        // A message wakes a teammate that went idle, or a subagent it resumes.
-        const awake = m.status === 'working' ? {} : { status: 'working' as const, endedAt: undefined }
-        return { ...m, ...awake, received: m.received + 1, mood }
-      }),
-    )
-    await update($, mail, all => [...all, { id: ++letterId, from, to, sentAt: now }])
-    await update($, posted, n => n + 1)
-    if (to !== LEAD) cancelClose()
+    await post($, from, to, e.text)
 
     return result
   }).catch(($, e, next) => next(e))
@@ -360,6 +465,8 @@ export const register: Register = on => {
         }
       }),
     )
+    // The engine hands an answered run's report to the lead without a SendMessage, so mail it here.
+    if (isKnown && status === 'done') await post($, agentId, LEAD, e.answer || 'report')
     await update($, frame, n => n + 1)
 
     const after = await read($, crew)
@@ -387,13 +494,24 @@ export const register: Register = on => {
     const tick = await read($, frame)
     const now = await $.clock.now()
     const width = Math.max(30, e.props.bodyColumns)
+    const drawn = (rows: Span[][], id: string) => (
+      <Box flexDirection="column" width={SPRITE_WIDTH}>
+        {rows.map((spans, row) => (
+          <Text key={`${id}-${row}`}>
+            {spans.map(([text, fg, bg], k) => (
+              <Text key={`${id}-${row}-${k}`} color={fg} backgroundColor={bg}>
+                {text}
+              </Text>
+            ))}
+          </Text>
+        ))}
+      </Box>
+    )
 
     if (list.length === 0) {
       return (
         <Box flexDirection="column">
-          <Text color="#8FD16B">{'  ▄███▄  '}</Text>
-          <Text color="#E8826B">{'  ▐- -▌z '}</Text>
-          <Text color="#E8826B">{'   ┴ ┴   '}</Text>
+          {drawn(NAPPING, 'napping')}
           <Text dimColor>The crew is napping. Ask for something big and they'll get to work.</Text>
         </Box>
       )
@@ -432,15 +550,13 @@ export const register: Register = on => {
           </Text>
         </Box>
         {list.map((m, i) => {
-          const look = sprite(m, tick, now)
           const mood = moodAt(m, now)
           const body = BODY_COLORS[m.look % BODY_COLORS.length]!
-          const hatColor = HAT_COLORS[Math.floor(m.look / BODY_COLORS.length) % HAT_COLORS.length]!
           const r = role(m.type)
           const elapsed = clock((m.endedAt ?? now) - m.startedAt)
           const post = m.sent + m.received > 0 ? ` · ✉${m.sent}↑${m.received}↓` : ''
           const stats = ` ${m.steps} steps · ${tokens(m.tokens)} · ${elapsed}${post}`
-          const { filled, empty } = bar(progress(m), width - 8 - (hasMail ? LANE_WIDTH : 0) - stats.length - 1)
+          const { filled, empty } = bar(progress(m), width - SPRITE_WIDTH - (hasMail ? LANE_WIDTH : 0) - stats.length - 1)
           const isLive = m.status === 'working'
           const barColor = m.status === 'failed' ? 'error' : m.status === 'stopped' ? 'warning' : isLive ? body : 'success'
           const doing =
@@ -457,11 +573,7 @@ export const register: Register = on => {
             <Box key={m.id} flexDirection="row">
               {hasMail && <Box flexDirection="column">{[0, 1, 2, 3, 4].map(k => gutter(top + k))}</Box>}
               <Box flexDirection="row" marginTop={1} flexGrow={1}>
-                <Box flexDirection="column" width={8}>
-                  <Text color={hatColor}>{look.hat}</Text>
-                  <Text color={body} dimColor={!isLive}>{look.face}</Text>
-                  <Text color={body} dimColor={!isLive}>{look.legs}</Text>
-                </Box>
+                {drawn(sprite(m, tick, now), m.id)}
                 <Box flexDirection="column" flexGrow={1}>
                   <Text bold dimColor={!isLive} wrap="truncate-end">
                     {m.task}

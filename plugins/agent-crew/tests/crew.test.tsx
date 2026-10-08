@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { addressee, bar, lane, progress } from '../hooks/register'
+import { addressee, bar, grey, lane, progress, sprite, SPRITE_WIDTH } from '../hooks/register'
 import type { CrewMember } from '../types'
 
 const PANE_PROPS = { title: 'Agent Crew', isFocused: false, bodyColumns: 70, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 40 }, view: {} }
@@ -117,6 +117,53 @@ test('a letter flies between teammates, the sender talks and the receiver perks 
   expect(await later.find({ text: /✉0↑1↓/ })).toBeDefined()
 })
 
+test('a finished agent mails its report home to the lead', async ($, on) => {
+  const clock = mock.clock(on, { now: 1_000_000 })
+  let n = 0
+  const spawn = (description: string, name: string) =>
+    $.agent.spawn({
+      tool_use_id: `tu-${name}`, prompt: description, description, subagentType: 'general-purpose',
+      provider: { plugin: 'engine', tier: 'core' }, parentModel: 'claude-opus-5-5', background: true, fork: false, name,
+    })
+  on('agent.spawn', async () => ({ model: 'claude-opus-5-5', agentId: `agent-${++n}` }))
+  on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+  on('turn.complete', async () => ({ text: '' }))
+
+  await spawn('Shanghai weather', 'weather')
+  await spawn('Shanghai travel tips', 'travel')
+  await $.turn.complete({ agentId: 'agent-1', answer: '# 上海天气预报\n逐日表…', durationMs: 1000, isAborted: false, turnId: 't1', reason: 'answer' })
+
+  const ui = await $.ui.mount({ plugin: 'agent-crew', surface: 'terminal', component: 'Pane', requestId: 'agent-crew', props: PANE_PROPS })
+  expect(await ui.find({ text: /💬 → lead: "# 上海天气预报"/ })).toBeDefined()
+  expect(await ui.find({ text: /⌂/ })).toBeDefined()
+  expect(await ui.find({ text: /💌 1/ })).toBeDefined()
+  expect(await ui.find({ text: /✉1↑0↓/ })).toBeDefined()
+  expect(await ui.find({ text: /1 working/ })).toBeDefined()
+  await ui.unmount()
+
+  // A run that was stopped or failed hands nothing back, so it sends no letter.
+  await $.turn.complete({ agentId: 'agent-2', answer: '', durationMs: 1000, isAborted: true, turnId: 't2', reason: 'aborted' })
+  await clock.advance(5_000)
+  const later = await $.ui.mount({ plugin: 'agent-crew', surface: 'terminal', component: 'Pane', requestId: 'agent-crew', props: PANE_PROPS })
+  expect(await later.find({ text: /💌 1/ })).toBeDefined()
+})
+
+test('a background subagent writing to main lands at the lead', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  on('agent.spawn', async () => ({ model: 'claude-opus-5-5', agentId: 'agent-1' }))
+  on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+  on('session.send', async () => ({ isDelivered: true as const }))
+  await $.agent.spawn({
+    tool_use_id: 'tu-1', prompt: 'x', description: 'Background job', subagentType: 'general-purpose',
+    provider: { plugin: 'engine', tier: 'core' }, parentModel: 'claude-opus-5-5', background: true, fork: false,
+  })
+  await $.session.send({ to: 'main', text: 'halfway there', origin: { kind: 'model' }, agentId: 'agent-1' })
+
+  const ui = await $.ui.mount({ plugin: 'agent-crew', surface: 'terminal', component: 'Pane', requestId: 'agent-crew', props: PANE_PROPS })
+  expect(await ui.find({ text: /💬 → lead: "halfway there"/ })).toBeDefined()
+  expect(await ui.find({ text: /💌 1/ })).toBeDefined()
+})
+
 test('mail to someone outside the crew leaves the pane alone', async ($, on) => {
   mock.clock(on, { now: 1_000_000 })
   on('agent.spawn', async () => ({ model: 'claude-opus-5-5', agentId: 'agent-1' }))
@@ -143,7 +190,7 @@ test('the lane draws a bracket from sender to receiver in the sender color', () 
   expect(row(landed[13]!)).toBe('╰───')
   expect(row(landed[8]!)).toBe('│   ')
   expect(landed[8]![0]!.isFaded).toBe(true)
-  expect(landed[8]![0]!.color).toBe('#E8C46B')
+  expect(landed[8]![0]!.color).toBe('#E07A9A')
 
   const crossing = lane(list, [{ id: 1, from: 'a', to: 'c', sentAt: 0 }, { id: 2, from: 'lead', to: 'b', sentAt: 100 }], 750)
   expect(row(crossing[0]!)).toBe('⌂─┐ ')
@@ -176,6 +223,26 @@ test('a new batch after the crew clocked out starts with a fresh crew', async ($
   expect(await ui.find({ text: /Joins while one still works/ })).toBeUndefined()
 })
 
+test('agents spawned in parallel all join the crew', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  let n = 0
+  const spawn = (description: string) =>
+    $.agent.spawn({
+      tool_use_id: `tu-${description}`, prompt: description, description, subagentType: 'general-purpose',
+      provider: { plugin: 'engine', tier: 'core' }, parentModel: 'claude-opus-5-5', background: true, fork: false,
+    })
+  on('agent.spawn', async () => ({ model: 'claude-opus-5-5', agentId: `agent-${++n}` }))
+  on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+
+  await Promise.all([spawn('Shanghai news'), spawn('Shanghai weather'), spawn('Shanghai travel tips')])
+
+  const ui = await $.ui.mount({ plugin: 'agent-crew', surface: 'terminal', component: 'Pane', requestId: 'agent-crew', props: PANE_PROPS })
+  expect(await ui.find({ text: /Shanghai news/ })).toBeDefined()
+  expect(await ui.find({ text: /Shanghai weather/ })).toBeDefined()
+  expect(await ui.find({ text: /Shanghai travel tips/ })).toBeDefined()
+  expect(await ui.find({ text: /3 working/ })).toBeDefined()
+})
+
 const member = (over: Partial<CrewMember>): CrewMember => ({
   id: 'agent-1', task: 'task', type: 'general-purpose', model: 'claude-opus-5-5', startedAt: 0,
   steps: 0, tokens: 0, status: 'working', look: 0, sent: 0, received: 0, ...over,
@@ -189,6 +256,7 @@ test('mail finds its addressee by id, name, name@team, or the lead', () => {
   expect(addressee(list, 'mapper@crew')).toBe('a1')
   expect(addressee(list, 'team-lead')).toBe('lead')
   expect(addressee(list, 'lead@crew')).toBe('lead')
+  expect(addressee(list, 'main')).toBe('lead')
   expect(addressee(list, 'stranger')).toBeUndefined()
 })
 
@@ -204,4 +272,43 @@ test('the bar always fills its width', () => {
   expect(bar(0, 4)).toEqual({ filled: '', empty: '░░░░' })
   expect(bar(1, 4)).toEqual({ filled: '████', empty: '' })
   expect(bar(0.5, 0)).toEqual({ filled: '█', empty: '' })
+})
+
+test('every Clawd row fills the sprite column in every state and pose', () => {
+  const moods = [undefined, { kind: 'talk' as const }, { kind: 'listen' as const }]
+  for (const status of ['working', 'done', 'failed', 'stopped'] as const)
+    for (const kind of moods)
+      for (let look = 0; look < 36; look++)
+        for (let tick = 0; tick < 4; tick++) {
+          const mood = kind && { ...kind, peer: 'p', ink: '#fff', text: 't', since: 0, until: 10 }
+          for (const row of sprite(member({ status, look, mood }), tick, 5))
+            expect([...row.map(([text]) => text).join('')].length).toBe(SPRITE_WIDTH)
+        }
+})
+
+test('the first Clawd is Clawd orange and bareheaded, and failed Clawds go grey', () => {
+  const first = sprite(member({ look: 0 }), 0, 0)
+  expect(first[1]![0]![1]).toBe('#D77757')
+  expect(first[0]!.some(([, , bg]) => bg !== undefined)).toBe(false)
+  const capped = sprite(member({ look: 7 }), 0, 0)
+  expect(capped[0]![3]).toEqual(['▀▀▀', '#F5F0E6', '#E5B35C'])
+  expect(grey('#D77757')).toBe('#937166')
+  const done = sprite(member({ status: 'done' }), 0, 0)
+  expect(done[0]![0]).toEqual(['✓', '#5FB86A'])
+  expect(done[0]![2]).toEqual(['^', '#1E1A22', '#D77757'])
+  expect(done[1]![1]).toEqual(['▘', '#FF8FAB', '#D77757'])
+  const failed = sprite(member({ status: 'failed' }), 0, 0)
+  expect(failed[1]![0]![1]).toBe('#937166')
+  expect(failed[1]![1]).toEqual(['▘', grey('#FF8FAB'), '#937166'])
+  expect(first[0]![2]).toEqual(['▛', '#D77757'])
+  expect(first[1]![1]).toEqual(['▘', '#FF8FAB', '#D77757'])
+})
+
+test('a done Clawd plants a still grey flag on its shoulder', () => {
+  const at = (tick: number) => {
+    const [top, middle] = sprite(member({ status: 'done' }), tick, 0)
+    return { flag: top!.at(-2), shoulder: middle!.at(-2) }
+  }
+  for (const tick of [0, 1, 2, 3]) expect(at(tick).flag).toEqual(['▛', '#B5B5B5'])
+  expect(at(0).shoulder).toEqual(['▛▘', '#D77757'])
 })
