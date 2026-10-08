@@ -110,7 +110,7 @@ test('a letter flies between teammates, the sender talks and the receiver perks 
   expect(await ui.find({ text: /💌 1/ })).toBeDefined()
   await ui.unmount()
 
-  await clock.advance(1_600)
+  await clock.advance(3_100)
   const later = await $.ui.mount({ plugin: 'agent-crew', surface: 'terminal', component: 'Pane', requestId: 'agent-crew', props: PANE_PROPS })
   expect(await later.find({ text: /📬 from scout: "found 3 call sites in auth\/"/ })).toBeDefined()
   expect(await later.find({ text: /✉1↑0↓/ })).toBeDefined()
@@ -185,14 +185,14 @@ test('the lane draws a bracket from sender to receiver in the sender color', () 
   const list = [member('a', 0), member('b', 1), member('c', 2)]
   const row = (cells: { char: string }[]) => cells.map(c => c.char).join('')
 
-  const landed = lane(list, [{ id: 1, from: 'c', to: 'a', sentAt: 0 }], 2_000)
+  const landed = lane(list, [{ id: 1, from: 'c', to: 'a', sentAt: 0 }], 4_000)
   expect(row(landed[3]!)).toBe('╭──▶')
   expect(row(landed[13]!)).toBe('╰───')
   expect(row(landed[8]!)).toBe('│   ')
   expect(landed[8]![0]!.isFaded).toBe(true)
   expect(landed[8]![0]!.color).toBe('#E07A9A')
 
-  const crossing = lane(list, [{ id: 1, from: 'a', to: 'c', sentAt: 0 }, { id: 2, from: 'lead', to: 'b', sentAt: 100 }], 750)
+  const crossing = lane(list, [{ id: 1, from: 'a', to: 'c', sentAt: 0 }, { id: 2, from: 'lead', to: 'b', sentAt: 100 }], 1_500)
   expect(row(crossing[0]!)).toBe('⌂─┐ ')
   expect(row(crossing[8]!)).toBe('✉ ╰▶')
 })

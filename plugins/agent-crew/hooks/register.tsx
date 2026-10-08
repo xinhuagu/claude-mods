@@ -8,10 +8,10 @@ const TITLE = 'Agent Crew'
 const MAX_CREW = 12
 /** How long the pane lingers after the last agent clocks out, so the finish can be seen. */
 const CLOSE_DELAY_MS = 10_000
-/** How long a letter takes to fly from sender to receiver. */
-const FLIGHT_MS = 1_500
+/** How long a letter takes to fly from sender to receiver: slow enough to follow it down the lane. */
+const FLIGHT_MS = 3_000
 /** How long a sender keeps talking, and a receiver keeps its ears up after the letter lands. */
-const MOOD_MS = 3_000
+const MOOD_MS = 5_000
 /** The main conversation, as the mail lane knows it. */
 const LEAD = 'lead'
 
